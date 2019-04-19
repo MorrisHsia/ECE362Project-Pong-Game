@@ -12,9 +12,8 @@
 #include "stm32f0xx.h"
 #include "stm32f0_discovery.h"
 			
-#include "library.h"
 
-void init_SPI(){
+/*void init_SPI(){
 
 
     RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
@@ -43,7 +42,7 @@ void init_SPI(){
 
 
 
-}
+}*/
 
 int main(void)
 {
