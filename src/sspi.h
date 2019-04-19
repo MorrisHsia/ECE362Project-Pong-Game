@@ -1,7 +1,7 @@
 #ifndef _VVC_SSPI_H
 #define _VVC_SSPI_H
 
-#include "global.h"
+//#include "global.h"
 #include "stm32f0xx.h"
 #include "stm32f0_discovery.h"
 
