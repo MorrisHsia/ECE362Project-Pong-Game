@@ -39,49 +39,46 @@ inline void sspi_cmd(uint8_t cdat) {
 /*
  * Initialize the SPI peripheral for use with a 4-wire display.
  */
-void hspi_init(SPI_TypeDef *SPIx) {
+void hspi_init() {
   // Ensure that the peripheral is disabled, and reset it.
-  SPIx->CR1 &= ~(SPI_CR1_SPE);
-  if (SPIx == SPI2) { // SPI2
-    RCC->APB1RSTR |=  (RCC_APB1RSTR_SPI2RST);
-    RCC->APB1RSTR &= ~(RCC_APB1RSTR_SPI2RST);
+  SPI1->CR1 &= ~(SPI_CR1_SPE);
+  if (SPI1 == SPI1) {
+    RCC->APB2RSTR |=  (RCC_APB2RSTR_SPI1RST);
+    RCC->APB2RSTR &= ~(RCC_APB2RSTR_SPI1RST);
   }
   // Use unidirectional simplex mode.
-  //SPIx->CR1 &= ~(SPI_CR1_BIDIMODE |
+  //SPI1->CR1 &= ~(SPI_CR1_BIDIMODE |
   //               SPI_CR1_BIDIOE);
   // Set clock polarity/phase to 0/0?
-  SPIx->CR1 &= ~(SPI_CR1_CPOL |
+  SPI1->CR1 &= ~(SPI_CR1_CPOL |
                  SPI_CR1_CPHA);
-  //SPIx->CR1 |=  (SPI_CR1_CPHA);
+  //SPI1->CR1 |=  (SPI_CR1_CPHA);
   // Or 1/1 seems to work...
-  SPIx->CR1 |=  (SPI_CR1_CPOL |
+  SPI1->CR1 |=  (SPI_CR1_CPOL |
                  SPI_CR1_CPHA);
   // Set the STM32 to act as a host device.
-  SPIx->CR1 |=  (SPI_CR1_MSTR);
+  SPI1->CR1 |=  (SPI_CR1_MSTR);
   // Set software 'Chip Select' pin.
-  SPIx->CR1 |=  (SPI_CR1_SSM);
+  SPI1->CR1 |=  (SPI_CR1_SSM);
   // (Set the internal 'Chip Select' signal.)
-  SPIx->CR1 |=  (SPI_CR1_SSI);
+  SPI1->CR1 |=  (SPI_CR1_SSI);
   // Use MSB-first format.
-  SPIx->CR1 &= ~(SPI_CR1_LSBFIRST);
+  SPI1->CR1 &= ~(SPI_CR1_LSBFIRST);
   // I think that these bits are required for some reason.
-  //SPIx->CR2 |=  (SPI_CR2_SSOE);
+  //SPI1->CR2 |=  (SPI_CR2_SSOE);
   // Set 8 bits per frame.
-  #ifdef VVC_F0
+
     // (The F0 series features configurable frame width.)
-    SPIx->CR2 &= ~(SPI_CR2_DS);
-    SPIx->CR2 |=  (0x7 << SPI_CR2_DS_Pos);
-  #elif  VVC_L0
-    // (The L0 series only supports 8- and 16-bit frames.)
-    SPIx->CR1 &= ~(SPI_CR1_DFF);
-  #endif
+    SPI1->CR2 |= (SPI_CR2_DS);
+    SPI1->CR2 &= ~(SPI_CR2_DS_3);
+    //SPI1->CR2 |=  (0x7 << SPI_CR2_DS_3);
   // Set the Baud rate prescaler.
-  SPIx->CR1 &= ~(SPI_CR1_BR);
+  SPI1->CR1 &= ~(SPI_CR1_BR);
   // Start slow? SPI_clock = Core_clock / (2 ^ (BR))
   // So, a value of 4 should slow things down by a factor of 16.
-  //SPIx->CR1 |=  (0x4 << SPI_CR1_BR_Pos);
+  //SPI1->CR1 |=  (0x4 << SPI_CR1_BR_Pos);
   // Enable the peripheral.
-  SPIx->CR1 |=  (SPI_CR1_SPE);
+  SPI1->CR1 |=  (SPI_CR1_SPE);
 }
 
 /*
@@ -90,11 +87,11 @@ void hspi_init(SPI_TypeDef *SPIx) {
  * (The STM32 has an onboard FIFO queue, so we can check
  *  whether that has space for writing instead.)
  */
-inline void hspi_w8(SPI_TypeDef *SPIx, uint8_t dat) {
+void hspi_w8(uint8_t dat) {
   // Wait for TXE.
-  while (!(SPIx->SR & SPI_SR_TXE)) {};
+  while (!(SPI1->SR & SPI_SR_TXE)) {};
   // Send the byte.
-  *(uint8_t*)&(SPIx->DR) = dat;
+  *(uint8_t*)&(SPI1->DR) = dat;
 }
 
 /*
@@ -106,18 +103,13 @@ inline void hspi_w8(SPI_TypeDef *SPIx, uint8_t dat) {
  * On L0 platforms, packing 2 data frames at once does
  * not appear to be supported.
  */
-inline void hspi_w16(SPI_TypeDef *SPIx, uint16_t dat) {
-#ifdef VVC_F0
+void hspi_w16(uint16_t dat) {
   // Wait for TXE.
-  while (!(SPIx->SR & SPI_SR_TXE)) {};
+  while (!(SPI1->SR & SPI_SR_TXE)) {};
   // Send the data.
   // (Flip the bytes for the little-endian ARM core.)
   dat = (((dat & 0x00FF) << 8) | ((dat & 0xFF00) >> 8));
-  *(uint16_t*)&(SPIx->DR) = dat;
-#elif  VVC_L0
-  hspi_w8(SPIx, (uint8_t)(dat >> 8));
-  hspi_w8(SPIx, (uint8_t)(dat & 0xFF));
-#endif
+  *(uint16_t*)&(SPI1->DR) = dat;
 }
 
 /*
@@ -126,10 +118,10 @@ inline void hspi_w16(SPI_TypeDef *SPIx, uint16_t dat) {
  * Wait for the transmission to finish before changing the
  * 'D/C' pin value.
  */
-inline void hspi_cmd(SPI_TypeDef *SPIx, uint8_t cmd) {
-  while ((SPIx->SR & SPI_SR_BSY)) {};
+void hspi_cmd(uint8_t cmd) {
+  while ((SPI1->SR & SPI_SR_BSY)) {};
   GPIOB->ODR &= ~(1 << PB_DC);
-  hspi_w8(SPIx, cmd);
-  while ((SPIx->SR & SPI_SR_BSY)) {};
+  hspi_w8(cmd);
+  while ((SPI1->SR & SPI_SR_BSY)) {};
   GPIOB->ODR |=  (1 << PB_DC);
 }

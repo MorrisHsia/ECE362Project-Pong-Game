@@ -1,54 +1,131 @@
+#include "main.h"
+
+
 /**
-  ******************************************************************************
-  * @file    main.c
-  * @author  Ac6
-  * @version V1.0
-  * @date    01-December-2013
-  * @brief   Default main function.
-  ******************************************************************************
-*/
+ * Main program.
+ */
+int main(void) {
+  // Initial clock setup.
+    // Reset the Flash 'Access Control Register', and
+    // then set 1 wait-state and enable the prefetch buffer.
+    // (The device header files only show 1 bit for the F0
+    //  line, but the reference manual shows 3...)
+    FLASH->ACR &= ~(0x00000017);
+    FLASH->ACR |=  (FLASH_ACR_LATENCY |
+                    FLASH_ACR_PRFTBE);
+    // Configure the PLL to (HSI / 2) * 12 = 48MHz.
+    // Use a PLLMUL of 0xA for *12, and keep PLLSRC at 0
+    // to use (HSI / PREDIV) as the core source. HSI = 8MHz.
+    RCC->CFGR  &= ~(RCC_CFGR_PLLMULL |
+                    RCC_CFGR_PLLSRC);
+    RCC->CFGR  |=  (RCC_CFGR_PLLMULL12);
+    // Turn the PLL on and wait for it to be ready.
+    RCC->CR    |=  (RCC_CR_PLLON);
+    while (!(RCC->CR & RCC_CR_PLLRDY)) {};
+    // Select the PLL as the system clock source.
+    RCC->CFGR  &= ~(RCC_CFGR_SW);
+    RCC->CFGR  |=  (RCC_CFGR_SW_PLL);
+    while (!(RCC->CFGR & RCC_CFGR_SWS_PLL)) {};
+    // The system clock is now 48MHz.
+    core_clock_hz = 48000000;
 
+    // Enable the GPIOB peripheral in 'RCC_AHBENR'.
+    RCC->AHBENR   |= RCC_AHBENR_GPIOAEN;
+    RCC->AHBENR   |= RCC_AHBENR_GPIOBEN;
+  // Enable the SPI1 peripheral.
+  RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
+  //#define VVC_SWSPI (1)
+  // Initialize the GPIOB pins.
+  // Mode: Output
+  GPIOB->MODER   &= ~((0x3 << (PB_MOSI * 2)) |
+                      (0x3 << (PB_SCK  * 2)) |
+                      (0x3 << (PB_DC   * 2)));
 
-#include "stm32f0xx.h"
-#include "stm32f0_discovery.h"
-			
+      GPIOB->AFR[0]  &= ~(GPIO_AFRL_AFRL3 |
+                          GPIO_AFRL_AFRL5);
+    GPIOB->MODER   |=  ((0x2 << (PB_MOSI * 2)) |
+                        (0x2 << (PB_SCK  * 2)) |
+                        (0x1 << (PB_DC   * 2)));
+    // Use pull-down resistors for the SPI peripheral?
+    // Or no pulling resistors?
+    GPIOB->PUPDR   &= ~((0x3 << (PB_MOSI * 2)) |
+                        (0x3 << (PB_SCK  * 2)) |
+                        (0x3 << (PB_DC   * 2)));
+    GPIOB->PUPDR  |=   ((0x1 << (PB_MOSI * 2)) |
+                        (0x1 << (PB_SCK  * 2)));
+  // Output type: Push-pull
+  GPIOB->OTYPER  &= ~((0x1 << PB_MOSI) |
+                      (0x1 << PB_SCK)  |
+                      (0x1 << PB_DC));
+  // High-speed - 50MHz maximum
+  // (Setting all '1's, so no need to clear bits first.)
+  GPIOB->OSPEEDR |=  ((0x3 << (PB_MOSI * 2)) |
+                      (0x3 << (PB_SCK  * 2)) |
+                      (0x3 << (PB_DC   * 2)));
+  // Initialize the GPIOA pins; ditto.
+  GPIOA->MODER   &= ~((0x3 << (PA_CS   * 2)) |
+                      (0x3 << (PA_RST  * 2)));
+  GPIOA->MODER   |=  ((0x1 << (PA_CS   * 2)) |
+                      (0x1 << (PA_RST  * 2)));
+  GPIOA->OTYPER  &= ~((0x1 << PA_CS) |
+                      (0x1 << PA_RST));
+  GPIOA->PUPDR   &= ~((0x3 << (PA_CS  * 2)) |
+                      (0x3 << (PA_RST * 2)));
+  // Perform ILI9341 panel initialization.
+  // Set initial pin values.
+  //   (The 'Chip Select' pin tells the display if it
+  //    should be listening. '0' means 'hey, listen!', and
+  //    '1' means 'ignore the SCK/MOSI/DC pins'.)
+  GPIOA->ODR |=  (1 << PA_CS);
+  //   (See the 'sspi_cmd' method for 'DC' pin info.)
+  GPIOB->ODR |=  (1 << PB_DC);
+  // Set SCK low to start.
+  //GPIOB->ODR &= ~(1 << PB_SCK);
+  // Or high?
+  GPIOB->ODR |=  (1 << PB_SCK);
+  // Reset the display by pulling the reset pin low,
+  // delaying a bit, then pulling it high.
+  GPIOA->ODR &= ~(1 << PA_RST);
+  // Delay at least 100ms; meh, call it 2 million no-ops.
+  delay_cycles(2000000);
+  GPIOA->ODR |=  (1 << PA_RST);
+  delay_cycles(2000000);
 
-/*void init_SPI(){
+  // Send initialization commands for a 320x240 display.
+    // Initialize the SPI peripheral.
+    hspi_init();
+    // Pull CS low.
+    GPIOA->ODR &= ~(1 << PA_CS);
+    // Initialize the display.
+    ili9341_hspi_init();
 
+  // Main loop - empty the screen as a test.
+  int tft_iter = 0;
+  int tft_on = 0;
+    // Set column range.
+    hspi_cmd(0x2A);
+    hspi_w16(0x0000);
+    hspi_w16((uint16_t)(239));
+    // Set row range.
+    hspi_cmd(0x2B);
+    hspi_w16(0x0000);
+    hspi_w16((uint16_t)(319));
+    // Set 'write to RAM'
+    hspi_cmd(0x2C);
+  while (1) {
+      // Write 320 * 240 pixels.
+      for (tft_iter = 0; tft_iter < (320*240); ++tft_iter) {
+        // Write a 16-bit color.
+        if (tft_on) {
+          hspi_w16(0xF800);
+        }
+        else {
+          hspi_w16(0x001F);
+        }
+      }
+      // Wait for the peripheral to finish sending.
+      while ((SPI1->SR & SPI_SR_BSY)) {};
 
-    RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
-    GPIOB->MODER |= GPIO_MODER_MODER12_1 | GPIO_MODER_MODER13_1 | GPIO_MODER_MODER14_1 | GPIO_MODER_MODER15_1 ; // Set PB12, 13, 15 as AF
-    GPIOB->AFR[1] &= ~GPIO_AFRH_AFRH4; // SET PB12 TO AF0
-    GPIOB->AFR[1] &= ~GPIO_AFRH_AFRH5; // SET PB13 TO AF0
-    GPIOB->AFR[1] &= ~GPIO_AFRH_AFRH6; // SET PB14 TO AF0
-    GPIOB->AFR[1] &= ~GPIO_AFRH_AFRH7; // SET PB15 TO AF0
-
-    RCC->APB1ENR |= RCC_APB1ENR_SPI2EN; // Enable SPI2
-
-    SPI2->CR1 &= ~SPI_CR1_SPE; // Disable SPI2
-
-    // Bits 5:3: Baud rate control - slowest possible (48MHz/256)
-    SPI2->CR1 = SPI_CR1_BR_0 | SPI_CR1_BR_1 | SPI_CR1_BR_2;
-
-    // Bit 2: Master Selection (1: Master configuration)
-    SPI2->CR1 |= SPI_CR1_MSTR;
-
-    // Bit 1: Clock polarity (0: CK to 0 when idle)
-    SPI2->CR1 &= ~SPI_CR1_CPOL;
-
-    // Bit 0: Clock phase (0: first clock transition is the first data capture edge)
-    SPI2->CR1 &= ~SPI_CR1_CPHA;
-
-
-
-
-}*/
-
-int main(void)
-{
-
-
-    printf("Hello World");
-
-	for(;;);
+    tft_on = !tft_on;
+  }
 }
