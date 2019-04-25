@@ -1,0 +1,31 @@
+
+    int mod_10 = 0;
+    while (mod_10 <= 1000000){
+     //   if (mod_10 % 10 == 0){
+            int step1 = 2.61626 * (1<<16);
+                           int step2 = 3.29628 * (1<<16);
+
+                           s1 += step1;
+                           s2 += step2;
+
+                           if (s1>>16 >= N){
+                               s1 -= N<<16;
+                           }
+                           if (s2>>16 >= N){
+                               s2 -= N<<16;
+                           }
+
+                           int sample = wavetable[s1>>16] /*+ wavetable[s2>>16]*/;
+
+                           if (sample > 4095){
+                               sample = 4095;
+                           }
+                           else if (sample < 0){
+                               sample = 0;
+                           }
+
+                           DAC->DHR12R1 = sample;
+                           DAC->SWTRIGR |= DAC_SWTRIGR_SWTRIG1;
+      //  }
+
+        mod_10 += 1;
